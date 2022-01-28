@@ -2,7 +2,7 @@
 const { pool } = require("../../../config/database");
 const {logger} = require("../../../config/winston");
 
-const jwtMiddleware = require("../../../config/jwtMiddleware");
+const validation = require("../../../config/validation");
 const mypgProvider = require("./mypageProvider");
 const mypgService = require("./mypageService");
 const mypgDao = require("./mypageDao");
@@ -10,73 +10,103 @@ const userProvider = require("../User/userProvider");
 const mainProvider = require("../Main/mainProvider");
 
 const baseResponse = require("../../../config/baseResponseStatus");
-const {response, errResponse} = require("../../../config/response");
-const { connect } = require("http2");
-
-const regexEmail = require("regex-email");
-const {emit, addListener} = require("nodemon");
-const jwt = require("jsonwebtoken");
-const secret_config = require("../../../config/secret");
+const {response, errResponse, resFormat} = require("../../../config/response");
 
 
 /**
+ * update : 2022.01.28
  * API No. 55. 
  * API Name : 내가 쓴 글 조회 API ( + 필터 )
  * [GET] /com/my-view/category/:category
  * 
  */
 
- exports.selectMyPost = async function (req, res) {
+ exports.getMyPostLists = async function (req, res) {
     const userId = req.verifiedToken.userId; // 내 아이디
     const category = req.params.category;
-    const size = 120;
     let { type, page } = req.query;
 
-    // 유저 체크
-    const statusCheck = await userProvider.checkUserStatus(userId);
-    if(statusCheck.length < 1)
-      return res.send(errResponse(baseResponse.SIGNIN_INACTIVE_ACCOUNT));
-
-
-    // 공백 체크
-    var re = /^ss*$/;
-
-    if(!category || re.test(category))
-        return res.send(errResponse(baseResponse.NO_POST_CATEGORY));
-
-    if (!Number(category))
-        return res.send(errResponse(baseResponse.INPUT_NUMBER));
-
-    if(1 > category || category > 2)
-        return res.send(errResponse(baseResponse.EXCEED_CATEGORY_RANGE));
-
-    //default 설정
+    if(!category)
+        return res.send(resFormat(false, 201, "카테고리가 정의 되지 않았습니다."));
+    
     if(!type) type = '최신순';
 
-    let filterArr = ['최신순','조회순','과거순','좋아요순'];
-    if(filterArr.includes(type) != true){
-        return res.send(response(baseResponse.INPUT_FILTER_WRONG));
-    }
-
     if(!page)
-        return res.send(response(baseResponse.NO_EMPTY_PAGE));
+        return res.send(resFormat(false, 202, "페이지가 정의 되지 않았습니다."));
+    
+        if(page == 0) page = 1;
 
-    if(page == 0)
-        return res.send(response(baseResponse.INPUT_PAGE_RANGE));
+    let filterArray = ['최신순','조회순','과거순','좋아요순'];
+    if (!validation.isNumberCheck(category) || !validation.isNumberCheck(page) || !filterArray.includes(type))
+        return res.send(resFormat(false, 203, "입력 형식이 올바르지 않습니다."));
 
-    page = size * (page-1);
+    if(1 > category || category > 2)
+        return res.send(resFormat(false, 204, "입력 가능한 카테고리 범위를 벗어났습니다."))
 
 
-    // 필터별 커뮤니티
-    const communityInfo = await mypgProvider.selectMyPost(userId, category, type, page, size);
-    if(communityInfo.length < 1){
-        return res.send(response(baseResponse.SEARCH_RESULT_EMPTY));
-    }
+    try {
+        const connection = await pool.getConnection(async (conn) => conn);
+        try {
+            if(!(await validation.isValidUser(userId))){
+                connection.release();
+                return res.send(resFormat(false, 301, "존재하지 않는 유저입니다."));
+            }
 
-    if(category == 1)
-        return res.send({ isSuccess:true, code:1000, message:"[식재료 관리법] 내가 쓴 글 조회 완료!", "result": { communityInfo }});
-    else 
-        return res.send({ isSuccess:true, code:1000, message:"[꿀팁공유] 내가 쓴 글 조회 완료!", "result": { communityInfo }});
+            let getMyPostLists = [];
+            let getMyPostListsQuery = `SELECT postId, title, mainImg,
+                                        CAST(IFNULL((SELECT status FROM Jjim WHERE userId = ${userId} AND postId = P.postId), 0) as unsigned) AS scrab,
+                                        (SELECT count(*) FROM Jjim WHERE postId = P.postId AND status = 'Y') AS likeCount,
+                                        (SELECT count(*) FROM Comment WHERE status = 'Y' AND postId = P.postId) AS comments
+                                    FROM Post P
+                                    WHERE category = ${category} AND P.status = 'Y'
+                                    AND P.userId = ${userId} `;
+
+            let filterQuery = ``;
+            let pageQuery = ` LIMIT 10 OFFSET ?;`;
+
+            // 필터별 커뮤니티
+            if(type == '최신순'){     
+
+                filterQuery = `ORDER BY P.createAt DESC`;
+
+            } else if(type == '조회순'){
+
+                filterQuery = `ORDER BY (SELECT count(*) FROM Watched W WHERE W.postId = P.postId) DESC`;
+
+            } else if(type == '과거순'){
+
+                filterQuery = `ORDER BY P.createAt`;
+
+            } else if(type == '좋아요순'){
+
+                filterQuery = `ORDER BY scrab DESC`;
+
+            }
+
+            getMyPostListsQuery = getMyPostListsQuery + filterQuery + pageQuery;
+                
+            [getMyPostLists] = await connection.query(getMyPostListsQuery , (parseInt(page) - 1) * 10);
+
+            
+            let responseData;
+            if(category === 1){
+                responseData = resFormat(true, 100, "[식재료 관리법] 내가 쓴 글 조회 완료!");
+            } else { 
+                responseData = resFormat(true, 100, "[꿀팁 공유] 내가 쓴 글 조회 완료!");
+            }
+          responseData.result = getMyPostLists;
+          connection.release();
+          return res.json(responseData);
+        } catch (err) {
+          // await connection.rollback(); // ROLLBACK
+          connection.release();
+          logger.error(`App - Get My Post Lists Query error\n: ${err.message}`);
+          return res.json(resFormat(false, 500, "Get My Post Lists Query error"));
+        }
+      } catch (err) {
+        logger.error(`App - Get My Post Lists Connection error\n: ${err.message}`);
+        return res.json(resFormat(false, 501, "Get My Post Lists Connection error"));
+      }
 
 };
 

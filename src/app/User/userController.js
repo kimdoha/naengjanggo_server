@@ -55,7 +55,7 @@ exports.signUp = async function (req, res) {
     const connection = await pool.getConnection(async (conn) => conn);
     try {
       const selectUserEmailQuery = `SELECT * 
-                                    FROM users
+                                    FROM User
                                     WHERE email = ? AND status != -1;`;
       const [emailRows] = await connection.query(selectUserEmailQuery, email);
       if (emailRows.length > 0)
@@ -69,7 +69,7 @@ exports.signUp = async function (req, res) {
 
       const insertUserInfoParams = [email, hashedPassword, fcm_token];
 
-      const insertUserInfoQuery = `INSERT INTO users(email, idType, password , fcmToken) VALUES (?, 5 ,?, ?); `;
+      const insertUserInfoQuery = `INSERT INTO User(email, idType, password , fcmToken) VALUES (?, 5 ,?, ?); `;
       await connection.query(insertUserInfoQuery, insertUserInfoParams);
 
       let responseData = resFormat(true, 100, "자체 회원가입 성공 완료!");
@@ -122,7 +122,7 @@ exports.signIn = async function (req, res) {
     try {
       // 이메일 여부 확인
       const getUserInfoQuery = `SELECT userId, email
-                                FROM users
+                                FROM User
                                 WHERE email = ? AND status = 'Y';`;
       const [userInfo] = await connection.query(getUserInfoQuery, email);
       if (userInfo.length < 1)
@@ -138,7 +138,7 @@ exports.signIn = async function (req, res) {
         .digest("hex");
 
       const getExistUserQuery = `SELECT EXISTS(SELECT email, password
-                                 FROM users
+                                 FROM User
                                  WHERE email = ? AND password = ?) AS exist;
           `;
       const [getExistUser] = await connection.query(getExistUserQuery, [
@@ -540,6 +540,7 @@ exports.autoLogin = async function (req, res) {
   const userId = req.verifiedToken.userId;
   const { fcm_token } = req.body;
 
+
   if (!fcm_token)
     return res.send(resFormat(false, 201, "fcm 토큰이 정의되지 않았습니다."));
 
@@ -556,8 +557,8 @@ exports.autoLogin = async function (req, res) {
         // 신고 당한 사람의 경우
         if(await validation.isDeclaredUser(userId)){
           const isUserDeclaredCheckQuery = `select distinct *
-                                            from notices n
-                                            inner join users u on n.userId = u.userId
+                                            from Notice n
+                                            inner join User u on n.userId = u.userId
                                             where n.userId = ? AND u.declaration = 'Y' AND
                                             NOW() BETWEEN n.createAt AND DATE_ADD(n.createAt ,INTERVAL 7 DAY )
                                             order by n.createAt DESC
@@ -571,16 +572,16 @@ exports.autoLogin = async function (req, res) {
           } else {
             // 신고 당한 지 7일 지난 후
 
-            const updateUserDeclarationQuery = `update users set declaration = 'N'
+            const updateUserDeclarationQuery = `update User set declaration = 'N'
                                                 where userId = ? and declaration = 'Y';`;
             await connection.query(updateUserDeclarationQuery, userId);
           }
         }
-        const isChangedFcmTokenCheckQuery = `select exists(select * from users where userId = ? and fcmToken = ?) as exist;`;
+        const isChangedFcmTokenCheckQuery = `select exists(select * from User where userId = ? and fcmToken = ?) as exist;`;
         const [isChangedFcmTokenCheck] = await connection.query(isChangedFcmTokenCheckQuery, [ userId, fcm_token ] );
         if (!isChangedFcmTokenCheck[0].exist) {
           // fcm_token 변경
-          const updateUserFcmTokenQuery = `update users set fcmToken = ? where userId = ?;`;
+          const updateUserFcmTokenQuery = `update User set fcmToken = ? where userId = ?;`;
           await connection.query(updateUserFcmTokenQuery, [ fcm_token, userId ]);
     
         }
@@ -710,7 +711,7 @@ exports.getFridgeInfo = async function (req, res) {
           return res.send(resFormat(false, 302, "신고당한 블랙 유저입니다."));
         }
         const getUserFridgeInfoQuery = `select fridgeId, userId, fridgeType
-                                        from fridges
+                                        from Fridge
                                         where userId = ? AND status = 'Y'
                                         order by createAt;`;
         const [getUserFridgeInfo] = await connection.query(getUserFridgeInfoQuery, userId);
@@ -767,7 +768,7 @@ exports.setFridge = async function (req, res) {
       }
 
       const getUserFridgeQuery = `select userId, fridgeType
-                                  from fridges
+                                  from Fridge
                                   where userId = ? AND status = 'Y'
                                   order by createAt;`;
       const [fridgeList] = await connection.query(getUserFridgeQuery, userId);
@@ -778,7 +779,7 @@ exports.setFridge = async function (req, res) {
 
       await connection.beginTransaction();
       // 냉장고 설정
-      const insertFridgeQuery = `insert into fridges(userId, fridgeType) VALUES (?, ?);`;
+      const insertFridgeQuery = `insert into Fridge(userId, fridgeType) VALUES (?, ?);`;
       const [insertFridge] = await connection.query(insertFridgeQuery, [ userId, type ]);
       
       let responseData = resFormat(true, 100, "냉장고 타입 설정 완료!");
@@ -851,7 +852,7 @@ exports.setUserInfo = async function (req, res) {
         return res.send(resFormat(false, 302, "신고당한 블랙 유저입니다."));
       }
       // 닉네임 중복 확인
-      const getDuplicationNameQuery = `select exists(select * from users where nickName = ?) as exist;`;
+      const getDuplicationNameQuery = `select exists(select * from User where nickName = ?) as exist;`;
       const [getDuplicationName] = await connection.query(getDuplicationNameQuery, nickname);
       if (getDuplicationName[0].exist)
         return res.send(resFormat(false, 303, "이미 존재하는 닉네임입니다."));
@@ -860,7 +861,7 @@ exports.setUserInfo = async function (req, res) {
 
       connection.beginTransaction();
       // update profileImg && nickname
-      const updateUserInfoQuery = `update users set nickName = ?, profileImg = ? 
+      const updateUserInfoQuery = `update User set nickName = ?, profileImg = ? 
                                    where userId = ?;`;
       await connection.query(updateUserInfoQuery, [ userName, userImage, userId ]);
 
@@ -909,11 +910,11 @@ exports.searchUser = async function (req, res) {
 
       let userInfo;
       const searchUserInfoQuery = `select userId, nickName, profileImg
-                                   from users
+                                   from User
                                    where userId = ? AND status = 'Y';`;
 
       const searchUserInfoByNickNameQuery = `select userId, nickName, profileImg
-                                             from users
+                                             from User
                                              where nickname = ? AND status = 'Y';`;
       if(!search){
         // 나의 정보 조회

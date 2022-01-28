@@ -1,0 +1,16 @@
+.idea/*
+node_modules/*
+package-lock.json
+log/*
+.DS_Store
+.env
+config/secret.js
+config/database.js
+config/jwtMiddleware.js
+config/appleConfig.json
+config/AuthKey.p8
+config/comon-f8610-firebase-adminsdk-fvu0e-9aadd26826.json
+config/google.json
+everytime.json
+ecosystem.config.js
+

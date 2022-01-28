@@ -6,7 +6,7 @@ const {logger} = require('../config/winston');
 async function isValidUser(userId) {
     try {
         const connection = await pool.getConnection(async conn => conn);
-        const isVaildTokenQuery = `select exists(select userId from users where userId = ? and status = 'Y') as exist;`;
+        const isVaildTokenQuery = `select exists(select userId from User where userId = ? and status = 'Y') as exist;`;
         const [isVaildToken] = await connection.query(isVaildTokenQuery, userId);
 
         connection.release();
@@ -20,7 +20,7 @@ async function isValidUser(userId) {
 async function isDeclaredUser(userId) {
     try {
         const connection = await pool.getConnection(async conn => conn);
-        const isVaildTokenQuery = `select exists(select userId from users where userId = ? and declaration = 'Y' and status = 'Y') as exist;`;
+        const isVaildTokenQuery = `select exists(select userId from User where userId = ? and declaration = 'Y' and status = 'Y') as exist;`;
         const [isVaildToken] = await connection.query(isVaildTokenQuery, userId);
 
         connection.release();
@@ -30,7 +30,16 @@ async function isDeclaredUser(userId) {
     }
 }
 
+async function isNumberCheck(number){
+    var regExp = /^[0-9]*$/;
+    if(regExp.test(number)){
+        return true;
+    } else {
+        return false;
+    }
+}
 module.exports = {
     isValidUser,
     isDeclaredUser,
+    isNumberCheck,
 }

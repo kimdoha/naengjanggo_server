@@ -4,7 +4,7 @@ module.exports = function(app){
 
 
     // 55. 내가 쓴 글 조회 API ( + 필터 )
-    app.get('/com/my-view/category/:category', jwtMiddleware, mypg.selectMyPost);
+    app.get('/com/my-view/category/:category', jwtMiddleware, mypg.getMyPostLists);
 
     // 56. 유통기한 알림 설정 API
     app.patch('/users/setpush/date/day/:day', jwtMiddleware, mypg.setPushDate);
