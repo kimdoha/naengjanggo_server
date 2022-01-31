@@ -16,7 +16,7 @@ module.exports = function(app){
     app.get('/users/alarm-info', jwtMiddleware, mypg.getUserAlarmInfo);
 
     // 8. 냉장고 타입 수정 API
-    app.patch('/users/fridge/:count/type/:type', jwtMiddleware, mypg.setFridgeType);
+    app.patch('/users/fridge/:fridgeId/type/:type', jwtMiddleware, mypg.setUserFridgeType);
 
     // 9.냉장고 삭제 API
     app.patch('/users/fridge/count/:count', jwtMiddleware, mypg.deleteFridge);

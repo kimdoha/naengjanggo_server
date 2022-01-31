@@ -307,67 +307,77 @@ const {response, errResponse, resFormat} = require("../../../config/response");
 };
 
 /**
+ * update : 2022.01.31
  * API No. 8.
  * API Name : 냉장고 타입 수정 API
- * [PATCH] /users/fridge/:count/type/:type
+ * [PATCH] /users/fridge/:fridgeId/type/:type
  * 
  */
 
- exports.setFridgeType= async function (req, res) {
+ exports.setUserFridgeType = async function (req, res) {
     const userId = req.verifiedToken.userId; // 내 아이디
-    const { count, type } = req.params;
-
-    // 유저 체크
-    const statusCheck = await userProvider.checkUserStatus(userId);
-    if(statusCheck.length < 1)
-        return res.send(errResponse(baseResponse.SIGNIN_INACTIVE_ACCOUNT));
-    
-    // count 체크
-    if(!count || !Number(count))
-        return res.send(errResponse(baseResponse.COUNT_INPUT_NUMBER));
-
-    // 공백 체크
-    var re = /^ss*$/;
-    if(re.test(count))
-        return res.send(errResponse(baseResponse.COUNT_INPUT_NUMBER));
-
-    if(count > 4)
-        return res.send(errResponse(baseResponse.COUNT_EXCEED_NUMBER));
+    const { fridgeId, type } = req.params;
 
 
-    // type 체크
-    if(!type || !Number(type))
-        return res.send(errResponse(baseResponse.INPUT_NUMBER));
+    if(!fridgeId)
+        return res.send(resFormat(false, 201, "fridgeId가 정의 되지 않았습니다."))
 
-    // 공백 체크
-    var re = /^ss*$/;
-    if(re.test(type))
-        return res.send(errResponse(baseResponse.INPUT_NUMBER));
+    if(!type)
+        return res.send(resFormat(false, 202, "타입이 정의 되지 않았습니다."));
 
-    if(type < 1 || type > 6)
-        return res.send(errResponse(baseResponse.EXCEED_NUMBER));
+    if(1 > type || 6 < type )
+        return res.send(resFormat(false, 203, "타입 입력 범위가 올바르지 않습니다."))
 
-
-    // 존재하는 카운트인지 확인
-    const fridgeList = await userProvider.existFridgeCount(userId, count);
-    if(fridgeList[0].exist === 1){
+    try {
+        const connection = await pool.getConnection(async (conn) => conn);
+        try {
+            if(!(await validation.isValidUser(userId))){
+                connection.release();
+                return res.send(resFormat(false, 301, "존재하지 않는 유저입니다."));
+            }
         
-        const fridge = await mainProvider.retrieveFridgeCount(userId, count);
-        const fridgeId = fridge.frigeId;
+            if(await validation.isDeclaredUser(userId)){
+                connection.release();
+                return res.send(resFormat(false, 302, "신고당한 블랙 유저입니다."));
+            }
 
-        if(type == fridge.fridgeType)
-            return res.send(errResponse(baseResponse.FRIDGE_CHANGE));
+            const paramsForGettingFridgeInfo = [ fridgeId, userId ];
+            const paramsForUpdatingFridgeInfo = [ type, fridgeId, userId ];
 
-        const changeFridge = await mypgService.changeFridge(userId, fridgeId, count, type);
-        if(changeFridge == baseResponse.DB_ERROR)
-            return res.sendd(errResponse(baseResponse.DB_ERROR));
-        
-    } else {
-        return res.send(errResponse(baseResponse.NO_EXIST_FRIDGE));
-    }
+            // 존재하는 카운트인지 확인
+            await connection.beginTransaction();
+            const isExistUserFridgeQuery = `SELECT EXISTS(SELECT *
+                                            FROM Fridge
+                                            WHERE fridgeId = ? AND userId = ? AND status = 'Y') AS exist;`;
+            const [isExistUserFridge] = await connection.query(isExistUserFridgeQuery, paramsForGettingFridgeInfo);
 
-    return res.send({ isSuccess:true, code:1000, message:"냉장고 타입 수정 완료!" });
+            if(isExistUserFridge[0].exist){
+                const deleteFoodStocksInFridgeQuery = `UPDATE FoodStock SET status = 'N' WHERE fridgeId = ? AND userId = ?;`;
+                await connection.query(deleteFoodStocksInFridgeQuery, paramsForGettingFridgeInfo);
+              
+                const patchUserFridgeTypeQuery = `UPDATE Fridge SET fridgeType = ? WHERE fridgeId = ? AND userId = ? AND status = 'Y';`;
+                await connection.query(patchUserFridgeTypeQuery, paramsForUpdatingFridgeInfo);
 
+            } else {
+                await connection.commit();
+                connection.release();
+                return res.send(resFormat(false, 303, "해당 냉장고가 존재하지 않습니다."));
+            }
+         
+            let responseData = resFormat(true, 100, "냉장고 타입 수정 완료!");
+            await connection.commit();
+            connection.release();
+            return res.json(responseData);
+        } catch (err) {
+          await connection.rollback(); // ROLLBACK
+          connection.release();
+          logger.error(`App - set User Fridge Type Query error\n: ${err.message}`);
+          return res.json(resFormat(false, 500, "set User Fridge Type Query error"));
+        }
+      } catch (err) {
+        logger.error(`App - set User Fridge Type DB Connection error\n: ${err.message}`);
+        return res.json(resFormat(false, 501, "set User Fridge Type DB Connection error"));
+      }
 };
 
 
