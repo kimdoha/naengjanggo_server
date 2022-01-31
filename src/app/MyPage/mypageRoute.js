@@ -7,7 +7,7 @@ module.exports = function(app){
     app.get('/com/my-view/category/:category', jwtMiddleware, mypg.getMyPostLists);
 
     // 56. 유통기한 알림 설정 API
-    app.patch('/users/setpush/date/day/:day', jwtMiddleware, mypg.setPushDate);
+    app.patch('/users/shelf-life/alarm-diff/:day', jwtMiddleware, mypg.setAlarmDiffByShelfLife);
 
     // 53. 댓글 알림 설정 API
     app.patch('/users/setpush/comment', jwtMiddleware, mypg.setPushComment);

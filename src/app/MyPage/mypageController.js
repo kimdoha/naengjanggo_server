@@ -51,6 +51,10 @@ const {response, errResponse, resFormat} = require("../../../config/response");
                 connection.release();
                 return res.send(resFormat(false, 301, "존재하지 않는 유저입니다."));
             }
+            if(await validation.isDeclaredUser(userId)){
+                connection.release();
+                return res.send(resFormat(false, 302, "신고당한 블랙 유저입니다."));
+            }
 
             let getMyPostLists = [];
             let getMyPostListsQuery = `SELECT postId, title, mainImg,
@@ -112,77 +116,81 @@ const {response, errResponse, resFormat} = require("../../../config/response");
 
 
 /**
+ * update : 2022.01.31
  * API No. 56. 
  * API Name : 유통기한 알림 설정 API
  * [PATCH] /users/setpush/date/:day
  * 
  */
 
- exports.setPushDate = async function (req, res) {
+ exports.setAlarmDiffByShelfLife = async function (req, res) {
     const userId = req.verifiedToken.userId; // 내 아이디
     let day = req.params.day;
+    let responseData;
 
-    // 유저 체크
-    const statusCheck = await userProvider.checkUserStatus(userId);
-    if(statusCheck.length < 1)
-        return res.send(errResponse(baseResponse.SIGNIN_INACTIVE_ACCOUNT));
+    if(!day) day = 7;
 
-
-    const existAlarm = await mypgProvider.existAlarm(userId);
-    if(existAlarm.length > 0){
-        var re = /^ss*$/;
-        console.log(day);
-
-        if(!day || re.test(day))
-            return res.send(errResponse(baseResponse.INPUT_EXPIRY_DATE));
+    if(1 > day || 7 < day)
+        return res.send(resFormat(false, 202, "만료일은 1 ~ 7 사이 입니다."))
     
-
-        if(day != 0){
-            // day가 있어 그러면 day 수정
-    
-            if(!Number(day))
-            return res.send(errResponse(baseResponse.INPUT_NUMBER));
-
-            // 1 2 3 4 5 6 7
-            if( 1 > day || day > 7)
-                return res.send(errResponse(baseResponse.INVALID_EXPIRY_DATE));
+    try {
+        const connection = await pool.getConnection(async (conn) => conn);
+        try {
+            if(!(await validation.isValidUser(userId))){
+                connection.release();
+                return res.send(resFormat(false, 301, "존재하지 않는 유저입니다."));
+              }
         
-            const dateAlarm = existAlarm[0].dateAlarm;
-            if(dateAlarm == 1){
-                const updateResult = await mypgService.updateDate(userId, day);
-                if(updateResult == baseResponse.DB_ERROR)
-                    return res.send(errResponse(baseResponse.DB_ERROR));
-                return res.send({ isSuccess:true, code:1000, message:"유통기한 알림 수정 완료!"});
-            } else {
-                return res.send(errResponse(baseResponse.DATE_ALARM_OFF));
-            }
+              if(await validation.isDeclaredUser(userId)){
+                connection.release();
+                return res.send(resFormat(false, 302, "신고당한 블랙 유저입니다."));
+              }
+
+            const isSetShelfLifeAlarmQuery = `SELECT * 
+                                              FROM Alarm
+                                              WHERE status = 'Y' AND userId = ?;`;
+            const [isSetShelfLifeAlarm] = await connection.query(isSetShelfLifeAlarmQuery, userId);
             
-        } else {
-            // day가 없다 => 공유하고 공유안하고만
-            const dateAlarm = existAlarm[0].dateAlarm;
-            if(dateAlarm == 1){
-                // 1이므로 0으로
-                const updateResultOff = await mypgService.updateDateOff(userId);
-                if(updateResultOff == baseResponse.DB_ERROR)
-                    return res.send(errResponse(baseResponse.DB_ERROR));
-                return res.send({ isSuccess:true, code:1000, message:"유통기한 알림 OFF 완료!"});
-                    
+            if(isSetShelfLifeAlarm.length < 1){
+     
+                const createUserShelfLifeAlarmQuery = `INSERT INTO Alarm(userId, dateDiff) VALUES(?, ?)`;
+                await connection.query(createUserShelfLifeAlarmQuery, [ userId, day ]);
+                responseData = resFormat(true, 100, "유통기한 알림 설정 완료!" );
+
             } else {
-                // 0이므로 1로
-                day = 7;
-                const updateResultOn = await mypgService.updateDateOn(userId, day);
-                if(updateResultOn == baseResponse.DB_ERROR)
-                    return res.send(errResponse(baseResponse.DB_ERROR));
-                return res.send({ isSuccess:true, code:1000, message:"유통기한 알림 ON 완료!"});
+                const alarm = isSetShelfLifeAlarm[0].shelfLifeAlarm;
+
+                if(alarm == 'Y'){
+                    const patchUserShelfLifeAlarmOffQuery = `UPDATE Alarm 
+                                                            SET shelfLifeAlarm = 'N'
+                                                            WHERE shelfLifeAlarm = 'Y' AND userId = ?;`;
+
+                    await connection.query(patchUserShelfLifeAlarmOffQuery, userId );
+                    responseData = resFormat(true, 100, "유통기한 알림 OFF 완료!" );
+
+                } else {
+                    const patchUserShelfLifeAlarmOnQuery = `UPDATE Alarm 
+                                                            SET shelfLifeAlarm = 'Y', dateDiff = ?
+                                                            WHERE shelfLifeAlarm = 'N' AND userId = ?;`;
+
+                    await connection.query(patchUserShelfLifeAlarmOnQuery, [ day, userId ]);
+                    responseData = resFormat(true, 100, "유통기한 알림 ON + 수정 완료!" );
+                } 
             }
+
+            
+          connection.release();
+          return res.json(responseData);
+        } catch (err) {
+          // await connection.rollback(); // ROLLBACK
+          connection.release();
+          logger.error(`App - Set Alarm Diff By Shelf Life Query error\n: ${err.message}`);
+          return res.json(resFormat(false, 500, "Set Alarm Diff By Shelf Life Query error"));
         }
-
-
-
-    } else {
-        return res.send(errResponse(baseResponse.SIGNIN_INACTIVE_ACCOUNT))
-    }
-
+      } catch (err) {
+        logger.error(`App - Set Alarm Diff By Shelf Life DB Connection error\n: ${err.message}`);
+        return res.json(resFormat(false, 501, "Set Alarm Diff By Shelf Life DB Connection error"));
+      }
 };
 
 

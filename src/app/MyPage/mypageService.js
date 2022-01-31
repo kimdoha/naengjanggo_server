@@ -11,35 +11,49 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const {connect} = require("http2");
 
-// 유통기한 알림 설정 Off
-exports.updateDateOff = async function (userId) {
+// 유통기한 알림 생성
+exports.createUserShelfLifeAlarm = async function (paramsForUserShelfLife) {
     try {
 
         const connection = await pool.getConnection(async (conn) => conn);
  
-        const updateResult = await mypgDao.updateDateOff(connection, userId);
-        console.log(`수정된 포스팅 : ${updateResult.insertId}`)
+        const createUserShelfLifeAlarmQuery = `INSERT INTO Alarm(userId, dateDiff) VALUES(?, ?)`;
+        await connection.query(createUserShelfLifeAlarmQuery, paramsForUserShelfLife);
         connection.release();
         return;
 
 
     } catch (err) {
-        logger.error(`App - Update Date Off Service error\n: ${err.message}`);
-        return baseResponse.DB_ERROR;
+        logger.error(`App - Service error\n: ${err.message}`);
+        throw(err);
     }
 };
 
 
-// 유통기한 알림 설정 On
-exports.updateDateOn = async function (userId, day) {
+// 유통기한 알림 설정 On / OFF
+exports.updateDateOn = async function (alarm) {
     try {
-
+        let responseData;
         const connection = await pool.getConnection(async (conn) => conn);
  
-        const updateResult = await mypgDao.updateDateOn(connection, userId, day);
-        console.log(`수정된 포스팅 : ${updateResult.insertId}`);
+        if(alarm == 'Y'){
+            const patchUserShelfLifeAlarmOffQuery = `UPDATE Alarm 
+                                                    SET shelfLifeAlarm = 'N'
+                                                    WHERE shelfLifeAlarm = 'Y' AND userId = ?;`;
+
+            await connection.query(patchUserShelfLifeAlarmOffQuery, userId );
+            responseData = resFormat(true, 100, "유통기한 알림 OFF 완료!" );
+
+        } else {
+            const patchUserShelfLifeAlarmOnQuery = `UPDATE Alarm 
+                                                    SET shelfLifeAlarm = 'Y', dateDiff = ?
+                                                    WHERE shelfLifeAlarm = 'N' AND userId = ?;`;
+
+            await connection.query(patchUserShelfLifeAlarmOnQuery, [ day, userId ]);
+            responseData = resFormat(true, 100, "유통기한 알림 ON + 수정 완료!" );
+        } 
         connection.release();
-        return;
+        return responseData;
 
 
     } catch (err) {
