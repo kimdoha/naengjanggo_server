@@ -131,7 +131,7 @@ const {response, errResponse, resFormat} = require("../../../config/response");
     if(!day) day = 7;
 
     if(1 > day || 7 < day)
-        return res.send(resFormat(false, 202, "만료일은 1 ~ 7 사이 입니다."))
+        return res.send(resFormat(false, 201, "만료일은 1 ~ 7 사이 입니다."))
     
     try {
         const connection = await pool.getConnection(async (conn) => conn);
@@ -174,7 +174,7 @@ const {response, errResponse, resFormat} = require("../../../config/response");
                                                             WHERE shelfLifeAlarm = 'N' AND userId = ?;`;
 
                     await connection.query(patchUserShelfLifeAlarmOnQuery, [ day, userId ]);
-                    responseData = resFormat(true, 100, "유통기한 알림 ON + 수정 완료!" );
+                    responseData = resFormat(true, 100, "유통기한 알림 ON 완료!" );
                 } 
             }
 
@@ -196,42 +196,67 @@ const {response, errResponse, resFormat} = require("../../../config/response");
 
 
 /**
+ * update : 2022.01.31
  * API No. 53.
  * API Name : 댓글 알림 설정 API
  * [PATCH] /users/setpush/comment
  * 
  */
 
- exports.setPushComment = async function (req, res) {
+ exports.setCommentAlarm = async function (req, res) {
     const userId = req.verifiedToken.userId; // 내 아이디
+    let responseData;
+    try {
+        const connection = await pool.getConnection(async (conn) => conn);
+        try {
+            if(!(await validation.isValidUser(userId))){
+                connection.release();
+                return res.send(resFormat(false, 301, "존재하지 않는 유저입니다."));
+            }
+        
+              if(await validation.isDeclaredUser(userId)){
+                connection.release();
+                return res.send(resFormat(false, 302, "신고당한 블랙 유저입니다."));
+            }
 
-    // 유저 체크
-    const statusCheck = await userProvider.checkUserStatus(userId);
-    if(statusCheck.length < 1)
-        return res.send(errResponse(baseResponse.SIGNIN_INACTIVE_ACCOUNT));
-
-
-    const existAlarm = await mypgProvider.existAlarm(userId);
-    if(existAlarm.length > 0){
-        const commentAlarm = existAlarm[0].commentAlarm;
-        if(commentAlarm == 1){
-            // 1이므로 0으로
-            const updateResultOff = await mypgService.updateCommentOff(userId);
-            if(updateResultOff == baseResponse.DB_ERROR)
-                return res.send(errResponse(baseResponse.DB_ERROR));
-            return res.send({ isSuccess:true, code:1000, message:"댓글 알림 설정 OFF 완료!" });
-                
-        } else {
-            // 0이므로 1로
-            const updateResultOn = await mypgService.updateCommentOn(userId);
-            if(updateResultOn == baseResponse.DB_ERROR)
-                return res.send(errResponse(baseResponse.DB_ERROR));
-            return res.send({ isSuccess:true, code:1000, message:"댓글 알림 설정 ON 완료!" });
+            const isSetCommentAlarmQuery = `SELECT *
+                                            FROM Alarm
+                                            WHERE status = 'Y' AND userId = ?;`;
+            const [isSetCommentAlarm] = await connection.query(isSetCommentAlarmQuery, userId);
+            if(isSetCommentAlarm.length > 0){
+                const commentAlarm = isSetCommentAlarm[0].commentAlarm;
+                if(commentAlarm == 'Y'){
+                    const patchUserCommentAlarmOffQuery = `UPDATE Alarm
+                                                        SET commentAlarm = 'N'
+                                                        WHERE commentAlarm = 'Y' AND userId = ?;`;
+                    await connection.query( patchUserCommentAlarmOffQuery, userId );
+                    responseData = resFormat(true, 100, "댓글 알림 설정 OFF 완료!");
+                        
+                } else {
+                    const patchUserCommentAlarmOnQuery = `UPDATE Alarm
+                                                        SET commentAlarm = 'Y'
+                                                        WHERE commentAlarm = 'N' AND userId = ?;`;
+                    await connection.query(patchUserCommentAlarmOnQuery, userId);
+                    responseData = resFormat(true, 100, "댓글 알림 설정 ON 완료!");
+                }
+  
+            } else {
+                const createUserCommentAlarmQuery = `INSERT INTO Alarm(userId) VALUES(?)`;
+                await connection.query(createUserCommentAlarmQuery, userId);
+                responseData = resFormat(true, 100, "댓글 알림 설정 완료!" );
+            }
+          connection.release();
+          return res.json(responseData);
+        } catch (err) {
+          // await connection.rollback(); // ROLLBACK
+          connection.release();
+          logger.error(`App - set Comment Alarm Query error\n: ${err.message}`);
+          return res.json(resFormat(false, 500, "set Comment Alarm Query error"));
         }
-    } else {
-        return res.send(errResponse(baseResponse.SIGNIN_INACTIVE_ACCOUNT))
-    }
-
+      } catch (err) {
+        logger.error(`App - set Comment Alarm DB Connection error\n: ${err.message}`);
+        return res.json(resFormat(false, 501, "set Comment Alarm DB Connection error"));
+      }
 };
 
 

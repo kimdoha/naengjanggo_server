@@ -10,7 +10,7 @@ module.exports = function(app){
     app.patch('/users/shelf-life/alarm-diff/:day', jwtMiddleware, mypg.setAlarmDiffByShelfLife);
 
     // 53. 댓글 알림 설정 API
-    app.patch('/users/setpush/comment', jwtMiddleware, mypg.setPushComment);
+    app.patch('/users/comment/alarm', jwtMiddleware, mypg.setCommentAlarm);
 
     // 60. 댓글 및 유통기한 설정 조회 API
     app.get('/users/setpush', jwtMiddleware, mypg.selectMyAlarm);
