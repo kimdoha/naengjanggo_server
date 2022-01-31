@@ -13,7 +13,7 @@ module.exports = function(app){
     app.patch('/users/comment/alarm', jwtMiddleware, mypg.setCommentAlarm);
 
     // 60. 댓글 및 유통기한 설정 조회 API
-    app.get('/users/setpush', jwtMiddleware, mypg.selectMyAlarm);
+    app.get('/users/alarm-info', jwtMiddleware, mypg.getUserAlarmInfo);
 
     // 8. 냉장고 타입 수정 API
     app.patch('/users/fridge/:count/type/:type', jwtMiddleware, mypg.setFridgeType);

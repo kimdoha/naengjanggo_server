@@ -119,7 +119,7 @@ const {response, errResponse, resFormat} = require("../../../config/response");
  * update : 2022.01.31
  * API No. 56. 
  * API Name : 유통기한 알림 설정 API
- * [PATCH] /users/setpush/date/:day
+ * [PATCH] /users/shelf-life/alarm-diff/:day
  * 
  */
 
@@ -199,7 +199,7 @@ const {response, errResponse, resFormat} = require("../../../config/response");
  * update : 2022.01.31
  * API No. 53.
  * API Name : 댓글 알림 설정 API
- * [PATCH] /users/setpush/comment
+ * [PATCH] /users/comment/alarm
  * 
  */
 
@@ -261,29 +261,49 @@ const {response, errResponse, resFormat} = require("../../../config/response");
 
 
 /**
+ * update : 2022.01.31
  * API No. 60.
  * API Name : 댓글 및 유통기한 설정 조회 API
- * [GET] /users/setpush
+ * [GET] /users/alarm-info
  * 
  */
 
- exports.selectMyAlarm = async function (req, res) {
+ exports.getUserAlarmInfo = async function (req, res) {
     const userId = req.verifiedToken.userId; // 내 아이디
 
-    // 유저 체크
-    const statusCheck = await userProvider.checkUserStatus(userId);
-    if(statusCheck.length < 1)
-        return res.send(errResponse(baseResponse.SIGNIN_INACTIVE_ACCOUNT));
+    try {
+        const connection = await pool.getConnection(async (conn) => conn);
+        try {
+            if(!(await validation.isValidUser(userId))){
+                connection.release();
+                return res.send(resFormat(false, 301, "존재하지 않는 유저입니다."));
+            }
+        
+              if(await validation.isDeclaredUser(userId)){
+                connection.release();
+                return res.send(resFormat(false, 302, "신고당한 블랙 유저입니다."));
+            }
+            
+            const getUserAlarmInfoQuery = `SELECT commentAlarm, shelfLifeAlarm , dateDiff as shelfLifeDateDiff
+                                            FROM Alarm
+                                            WHERE status = 'Y' AND userId = ?;`;
+            const [alarmInfo] = await connection.query(getUserAlarmInfoQuery , userId);
 
 
-    const existAlarm = await mypgProvider.existAlarm(userId);
-    if(existAlarm.length > 0){
-        const alarmInfo = await mypgProvider.selectMyAlarm(userId);
-        return res.send({ isSuccess:true, code:1000, message:"댓글 및 유통기한 알림 조회 완료!" , "result" : alarmInfo });
-    } else {
-        return res.send(errResponse(baseResponse.SIGNIN_INACTIVE_ACCOUNT))
-    }
-
+          let responseData = resFormat(true, 100, "댓글 및 유통기한 알림 조회 완료!");
+          responseData.result = alarmInfo;
+          connection.release();
+          return res.json(responseData);
+        } catch (err) {
+          // await connection.rollback(); // ROLLBACK
+          connection.release();
+          logger.error(`App - get User Alarm Info Query error\n: ${err.message}`);
+          return res.json(resFormat(false, 500, "get User Alarm Info Query error"));
+        }
+      } catch (err) {
+        logger.error(`App - get User Alarm Info DB Connection error\n: ${err.message}`);
+        return res.json(resFormat(false, 501, "get User Alarm Info DB Connection error"));
+      }
 };
 
 /**
