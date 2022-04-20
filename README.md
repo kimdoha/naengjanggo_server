@@ -1,5 +1,4 @@
 # naengjanggo-server
-# Comon-server
 
 우리집 냉장고 관리부터
 
