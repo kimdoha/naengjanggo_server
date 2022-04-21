@@ -8,7 +8,7 @@
 
 ---
 
-![img](https://postfiles.pstatic.net/MjAyMTA4MDdfMTgz/MDAxNjI4MjY3MzYxOTA5.J2yB-WiNvW19GAJ0WKjc2Lm8KOICnSAkf-qvoO2TyLkg.niMml-Um7a02msM9XEbe7iu86rkOuYF2HG29yclRiv4g.PNG.kkhhjj888/%EC%8A%A4%ED%81%AC%EB%A6%B0%EC%83%B7_2021-08-07_%EC%98%A4%EC%A0%84_1.27.25.png?type=w966)
+![img](https://github.com/kimdoha/naengjanggo_server/issues/1#issue-1210342620)
 
 <br/>
 
