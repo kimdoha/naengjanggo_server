@@ -8,7 +8,8 @@
 
 ---
 
-![img](https://github.com/kimdoha/naengjanggo_server/issues/1#issue-1210342620)
+<img width="1199" alt="냉장고" src="https://user-images.githubusercontent.com/62235737/164344582-bf00fed4-6eae-4bbd-8091-d0fdd5b674b8.png">
+
 
 <br/>
 
